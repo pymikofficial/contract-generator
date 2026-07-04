@@ -627,10 +627,10 @@ function exportPDF() {
 
   function drawWatermark() {
     doc.saveGraphicsState();
-    doc.setGState(new doc.GState({ opacity: 0.06 }));
+    doc.setGState(new doc.GState({ opacity: 0.035 }));
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(64);
-    doc.setTextColor(124, 92, 255);
+    doc.setFontSize(52);
+    doc.setTextColor(150, 150, 158);
     doc.text('COSMIK.WORK', pageW / 2, pageH / 2, { angle: 40, align: 'center' });
     doc.restoreGraphicsState();
   }
