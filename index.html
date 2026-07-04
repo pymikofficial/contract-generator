@@ -501,6 +501,12 @@ function collectFields() {
   return fields;
 }
 
+let pollTimer = null;
+
+function stopPolling() {
+  if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+}
+
 async function generateContract() {
   const fields = collectFields();
   const formMsg = document.getElementById('formMsg');
@@ -512,32 +518,79 @@ async function generateContract() {
     return;
   }
 
+  stopPolling();
   generateBtn.disabled = true;
   generateBtn.textContent = 'Drafting…';
-  formMsg.textContent = '';
+  formMsg.textContent = 'This can take up to a minute for a full draft.';
+  formMsg.className = 'form-msg ok';
+
+  const jobId = 'job-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
 
   try {
-    const resp = await fetch('/.netlify/functions/generate-contract', {
+    await fetch('/.netlify/functions/generate-contract-background', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contractType: currentType, fields })
+      body: JSON.stringify({ jobId, contractType: currentType, fields })
     });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Something went wrong');
-
-    lastDraftText = data.contractText;
-    document.getElementById('draftOutput').textContent = lastDraftText;
-    document.getElementById('outputSection').style.display = 'block';
-    document.getElementById('outputSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    formMsg.textContent = 'Draft ready below.';
-    formMsg.className = 'form-msg ok';
   } catch (err) {
-    formMsg.textContent = err.message;
+    formMsg.textContent = 'Could not reach the drafting service. Try again.';
     formMsg.className = 'form-msg';
-  } finally {
     generateBtn.disabled = false;
     generateBtn.textContent = 'Generate draft';
+    return;
   }
+
+  let attempts = 0;
+  const maxAttempts = 40; // ~80 seconds of polling at 2s intervals
+
+  async function poll() {
+    attempts += 1;
+    try {
+      const resp = await fetch(`/.netlify/functions/check-contract?jobId=${encodeURIComponent(jobId)}`);
+      const data = await resp.json();
+
+      if (data.status === 'done') {
+        lastDraftText = data.contractText;
+        document.getElementById('draftOutput').textContent = lastDraftText;
+        document.getElementById('outputSection').style.display = 'block';
+        document.getElementById('outputSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        formMsg.textContent = 'Draft ready below.';
+        formMsg.className = 'form-msg ok';
+        generateBtn.disabled = false;
+        generateBtn.textContent = 'Generate draft';
+        return;
+      }
+
+      if (data.status === 'error') {
+        formMsg.textContent = data.error || 'Something went wrong.';
+        formMsg.className = 'form-msg';
+        generateBtn.disabled = false;
+        generateBtn.textContent = 'Generate draft';
+        return;
+      }
+
+      if (attempts >= maxAttempts) {
+        formMsg.textContent = 'This is taking longer than expected. Try again with fewer fields, or retry shortly.';
+        formMsg.className = 'form-msg';
+        generateBtn.disabled = false;
+        generateBtn.textContent = 'Generate draft';
+        return;
+      }
+
+      pollTimer = setTimeout(poll, 2000);
+    } catch (err) {
+      if (attempts >= maxAttempts) {
+        formMsg.textContent = 'Lost connection while drafting. Try again.';
+        formMsg.className = 'form-msg';
+        generateBtn.disabled = false;
+        generateBtn.textContent = 'Generate draft';
+        return;
+      }
+      pollTimer = setTimeout(poll, 2000);
+    }
+  }
+
+  pollTimer = setTimeout(poll, 1500);
 }
 
 function copyDraft() {

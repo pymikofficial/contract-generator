@@ -1,8 +1,10 @@
+const { getStore } = require('@netlify/blobs');
+
 const DAILY_CAP = parseInt(process.env.DAILY_CAP || '20', 10);
 const MODEL = 'claude-sonnet-4-6';
 
-// Stateless in-memory cap, same pattern as Fieldnote's generate.js.
-// Resets on cold start, this is a soft brake to control API spend, not a hard guarantee.
+// Stateless in-memory cap. Resets on cold start, this is a soft brake to
+// control API spend, not a hard guarantee.
 let usageDate = new Date().toISOString().slice(0, 10);
 let usageCount = 0;
 
@@ -16,12 +18,6 @@ function checkAndBumpUsage() {
   usageCount += 1;
   return true;
 }
-
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS'
-};
 
 const SYSTEM_PROMPTS = {
   joining: `You draft a formal employment joining/appointment letter from the fields the employer provides.
@@ -41,20 +37,19 @@ Output only the agreement text, nothing before or after it.`
 };
 
 exports.handler = async (event) => {
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 204, headers: CORS_HEADERS, body: '' };
-  }
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Method not allowed' }) };
-  }
-
   let body;
   try {
     body = JSON.parse(event.body || '{}');
   } catch (e) {
-    return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Invalid request body' }) };
+    return { statusCode: 200, body: '' };
   }
 
+  const jobId = (body.jobId || '').toString().slice(0, 64);
+  if (!jobId) {
+    return { statusCode: 200, body: '' };
+  }
+
+  const store = getStore({ name: 'contract-jobs' });
   const contractType = body.contractType === 'exit' ? 'exit' : 'joining';
   const fields = Array.isArray(body.fields) ? body.fields : [];
 
@@ -66,18 +61,17 @@ exports.handler = async (event) => {
     .filter((f) => f.label && f.value);
 
   if (!cleanFields.length) {
-    return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Fill in at least one field before generating.' }) };
+    await store.set(jobId, JSON.stringify({ status: 'error', error: 'Fill in at least one field before generating.' }));
+    return { statusCode: 200, body: '' };
   }
   if (cleanFields.length > 60) {
-    return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Too many fields in one request.' }) };
+    await store.set(jobId, JSON.stringify({ status: 'error', error: 'Too many fields in one request.' }));
+    return { statusCode: 200, body: '' };
   }
 
   if (!checkAndBumpUsage()) {
-    return {
-      statusCode: 429,
-      headers: CORS_HEADERS,
-      body: JSON.stringify({ error: 'Contract Generator has hit its free generation limit for now. Check back shortly.' })
-    };
+    await store.set(jobId, JSON.stringify({ status: 'error', error: 'Contract Generator has hit its free generation limit for now. Check back shortly.' }));
+    return { statusCode: 200, body: '' };
   }
 
   const fieldText = cleanFields.map((f) => `${f.label}: ${f.value}`).join('\n');
@@ -100,22 +94,22 @@ exports.handler = async (event) => {
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => '');
-      return { statusCode: 502, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Upstream error: ' + errText.slice(0, 200) }) };
+      await store.set(jobId, JSON.stringify({ status: 'error', error: 'Upstream error: ' + errText.slice(0, 200) }));
+      return { statusCode: 200, body: '' };
     }
 
     const data = await resp.json();
     const contractText = (data.content || []).map((b) => b.text || '').join('').trim();
 
     if (!contractText) {
-      return { statusCode: 502, headers: CORS_HEADERS, body: JSON.stringify({ error: 'No text came back. Try again.' }) };
+      await store.set(jobId, JSON.stringify({ status: 'error', error: 'No text came back. Try again.' }));
+      return { statusCode: 200, body: '' };
     }
 
-    return {
-      statusCode: 200,
-      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contractText })
-    };
+    await store.set(jobId, JSON.stringify({ status: 'done', contractText }));
   } catch (err) {
-    return { statusCode: 500, headers: CORS_HEADERS, body: JSON.stringify({ error: err.message }) };
+    await store.set(jobId, JSON.stringify({ status: 'error', error: err.message }));
   }
+
+  return { statusCode: 200, body: '' };
 };
