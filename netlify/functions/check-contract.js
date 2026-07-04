@@ -1,5 +1,10 @@
 const { getStore } = require('@netlify/blobs');
 
+const BLOBS_CONFIG = {
+  siteID: process.env.NETLIFY_SITE_ID,
+  token: process.env.NETLIFY_BLOBS_TOKEN
+};
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type',
@@ -17,7 +22,7 @@ exports.handler = async (event) => {
   }
 
   try {
-    const store = getStore({ name: 'contract-jobs' });
+    const store = getStore({ name: 'contract-jobs', ...BLOBS_CONFIG });
     const raw = await store.get(jobId).catch(() => null);
 
     if (!raw) {

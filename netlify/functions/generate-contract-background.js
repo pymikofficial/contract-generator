@@ -1,5 +1,10 @@
 const { getStore } = require('@netlify/blobs');
 
+const BLOBS_CONFIG = {
+  siteID: process.env.NETLIFY_SITE_ID,
+  token: process.env.NETLIFY_BLOBS_TOKEN
+};
+
 const DAILY_CAP = parseInt(process.env.DAILY_CAP || '20', 10);
 const MODEL = 'claude-sonnet-4-6';
 
@@ -49,7 +54,7 @@ exports.handler = async (event) => {
     return { statusCode: 200, body: '' };
   }
 
-  const store = getStore({ name: 'contract-jobs' });
+  const store = getStore({ name: 'contract-jobs', ...BLOBS_CONFIG });
   const contractType = body.contractType === 'exit' ? 'exit' : 'joining';
   const fields = Array.isArray(body.fields) ? body.fields : [];
 
