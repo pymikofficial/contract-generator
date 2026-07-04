@@ -331,7 +331,7 @@ let customIdCounter = 0;
 let lastDraftText = '';
 
 function initSectionState(type) {
-  sectionState = CATALOG[type].sections.map(() => ({ chipsAdded: new Set(), customFields: [] }));
+  sectionState = CATALOG[type].sections.map(() => ({ chipsAdded: new Set(), customFields: [], values: {} }));
 }
 
 function setType(type) {
@@ -363,14 +363,15 @@ function renderSections() {
     hint.textContent = section.hint;
     box.appendChild(hint);
 
-    box.appendChild(makeFieldRow(section.default.label, section.default.placeholder, false, null, si));
+    box.appendChild(makeFieldRow(section.default.label, section.default.placeholder, false, null, section.default.id, si));
 
     state.chipsAdded.forEach((chipId) => {
       const chip = section.chips.find((c) => c.id === chipId);
       box.appendChild(makeFieldRow(chip.label, chip.placeholder, true, () => {
         state.chipsAdded.delete(chipId);
+        delete state.values[chipId];
         renderSections();
-      }, si));
+      }, chipId, si));
     });
 
     state.customFields.forEach((cf) => {
@@ -405,7 +406,7 @@ function renderSections() {
   });
 }
 
-function makeFieldRow(label, placeholder, removable, onRemove, sectionIdx) {
+function makeFieldRow(label, placeholder, removable, onRemove, fieldId, sectionIdx) {
   const row = document.createElement('div');
   row.className = 'field-row';
 
@@ -417,11 +418,14 @@ function makeFieldRow(label, placeholder, removable, onRemove, sectionIdx) {
   const inner = document.createElement('div');
   inner.className = 'field-row-inner';
 
+  const state = sectionState[sectionIdx];
   const input = document.createElement('textarea');
   input.rows = 1;
   input.style.minHeight = '44px';
   input.placeholder = placeholder;
   input.dataset.fieldLabel = label;
+  input.value = state.values[fieldId] || '';
+  input.oninput = () => { state.values[fieldId] = input.value; };
   inner.appendChild(input);
 
   if (removable) {
