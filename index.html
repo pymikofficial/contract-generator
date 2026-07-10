@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Contract Generator. Draft-ready agreements in minutes.</title>
 <meta name="description" content="An open-source AI contract generator. Fill in a modular form for a joining letter or exit agreement, Claude drafts it, export straight to PDF.">
+<link rel="canonical" href="https://cosmik-contract-generator.netlify.app/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Contract Generator. Draft-ready agreements in minutes.">
+<meta property="og:description" content="An open-source AI contract generator. Fill in a modular form for a joining letter or exit agreement, Claude drafts it, export straight to PDF.">
+<meta property="og:url" content="https://cosmik-contract-generator.netlify.app/">
+<meta property="og:image" content="https://cosmik.work/img/cosmikwork_broad_logo.webp">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Contract Generator. Draft-ready agreements in minutes.">
+<meta name="twitter:description" content="An open-source AI contract generator. Fill in a modular form for a joining letter or exit agreement, Claude drafts it, export straight to PDF.">
+<meta name="twitter:image" content="https://cosmik.work/img/cosmikwork_broad_logo.webp">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;1,500&family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -81,6 +91,9 @@
 
   .field-row{margin-bottom:14px;}
   .field-row-inner{display:flex;gap:8px;align-items:flex-start;}
+  .char-count{font-family:var(--font-mono);font-size:10.5px;color:var(--off-dim);text-align:right;margin-top:3px;}
+  .char-count.warn{color:var(--amber);}
+  .char-count.over{color:var(--red);}
   .field-label{
     font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;color:var(--off-dim);
     text-transform:uppercase;margin-bottom:6px;display:block;
@@ -146,15 +159,24 @@
   }
   footer a{color:var(--violet);text-decoration:none;}
   footer a:hover{color:var(--amber);}
+  .skip-link{
+    position:absolute;left:-9999px;top:0;z-index:100;
+    background:var(--violet);color:#fff;padding:12px 20px;
+    font-family:var(--font-mono);font-size:13px;text-decoration:none;border-radius:0 0 8px 0;
+  }
+  .skip-link:focus{left:0;}
 </style>
 </head>
 <body>
 
-<div class="topbar">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<nav class="topbar" aria-label="Breadcrumb">
   <a class="brand" href="https://cosmik.work"><strong>cosmik</strong>.work</a>
   <a class="backlink" href="https://cosmik.work/shipped.html">&larr; shipped</a>
-</div>
+</nav>
 
+<main id="main">
 <div class="hero">
   <span class="eyebrow">Shipped · 02 · Contract Generator</span>
   <h1>Draft-ready agreements, <em>not</em> days of back-and-forth.</h1>
@@ -207,6 +229,7 @@
   </div>
   <div class="paper" id="draftOutput"></div>
 </div>
+</main>
 
 <footer>
   Built by <a href="https://cosmik.work">Soumik Chatterjee</a> · one Netlify Function, no signature backlog, no drafting inbox
@@ -426,11 +449,15 @@ function makeFieldRow(label, placeholder, removable, onRemove, fieldId, sectionI
   input.id = inputId;
   input.rows = 1;
   input.style.minHeight = '44px';
+  input.maxLength = 800;
   input.placeholder = placeholder;
   input.dataset.fieldLabel = label;
   input.value = state.values[fieldId] || '';
-  input.oninput = () => { state.values[fieldId] = input.value; };
+  input.oninput = () => { state.values[fieldId] = input.value; updateFieldCharCount(input, count); };
   inner.appendChild(input);
+
+  const count = document.createElement('p');
+  count.className = 'char-count';
 
   if (removable) {
     const btn = document.createElement('button');
@@ -442,7 +469,16 @@ function makeFieldRow(label, placeholder, removable, onRemove, fieldId, sectionI
   }
 
   row.appendChild(inner);
+  row.appendChild(count);
+  updateFieldCharCount(input, count);
   return row;
+}
+
+function updateFieldCharCount(input, countEl){
+  const max = input.maxLength;
+  const n = input.value.length;
+  countEl.textContent = n + ' / ' + max;
+  countEl.className = 'char-count' + (n >= max ? ' over' : n >= max * 0.9 ? ' warn' : '');
 }
 
 function makeCustomFieldRow(cf, onRemove) {
@@ -452,6 +488,7 @@ function makeCustomFieldRow(cf, onRemove) {
   const labelInput = document.createElement('input');
   labelInput.type = 'text';
   labelInput.className = 'custom-label-input';
+  labelInput.maxLength = 80;
   labelInput.placeholder = 'Field name, e.g. Relocation allowance';
   labelInput.value = cf.label;
   labelInput.oninput = () => { cf.label = labelInput.value; };
@@ -463,9 +500,12 @@ function makeCustomFieldRow(cf, onRemove) {
   const valueInput = document.createElement('textarea');
   valueInput.rows = 1;
   valueInput.style.minHeight = '44px';
+  valueInput.maxLength = 800;
   valueInput.placeholder = 'Value for this field';
   valueInput.value = cf.value;
-  valueInput.oninput = () => { cf.value = valueInput.value; };
+  const count = document.createElement('p');
+  count.className = 'char-count';
+  valueInput.oninput = () => { cf.value = valueInput.value; updateFieldCharCount(valueInput, count); };
   inner.appendChild(valueInput);
 
   const btn = document.createElement('button');
@@ -476,6 +516,8 @@ function makeCustomFieldRow(cf, onRemove) {
   inner.appendChild(btn);
 
   row.appendChild(inner);
+  row.appendChild(count);
+  updateFieldCharCount(valueInput, count);
   return row;
 }
 
@@ -599,10 +641,14 @@ async function generateContract() {
 
 function copyDraft() {
   if (!lastDraftText) return;
-  navigator.clipboard.writeText(lastDraftText);
   const formMsg = document.getElementById('formMsg');
-  formMsg.textContent = 'Copied to clipboard.';
-  formMsg.className = 'form-msg ok';
+  navigator.clipboard.writeText(lastDraftText).then(() => {
+    formMsg.textContent = 'Copied to clipboard.';
+    formMsg.className = 'form-msg ok';
+  }).catch(() => {
+    formMsg.textContent = 'Copy failed — select the draft text and copy manually.';
+    formMsg.className = 'form-msg';
+  });
 }
 
 function exportPDF() {
