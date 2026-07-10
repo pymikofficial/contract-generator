@@ -6,22 +6,33 @@ const BLOBS_CONFIG = {
 };
 
 const DAILY_CAP = parseInt(process.env.DAILY_CAP || '20', 10);
+const DAILY_CAP_PER_IP = parseInt(process.env.DAILY_CAP_PER_IP || '6', 10);
 const MODEL = 'claude-sonnet-4-6';
 
-// Stateless in-memory cap. Resets on cold start, this is a soft brake to
-// control API spend, not a hard guarantee.
-let usageDate = new Date().toISOString().slice(0, 10);
-let usageCount = 0;
+function clientIp(event) {
+  return ((event.headers && (event.headers['x-nf-client-connection-ip'] || event.headers['x-forwarded-for'])) || 'unknown').split(',')[0].trim();
+}
 
-function checkAndBumpUsage() {
+// Blobs-backed cap, persists across cold starts and function instances,
+// unlike an in-memory counter which resets every time Netlify spins up a
+// fresh instance and is not shared across concurrent instances anyway.
+async function checkAndBumpUsage(limitStore, event) {
   const today = new Date().toISOString().slice(0, 10);
-  if (today !== usageDate) {
-    usageDate = today;
-    usageCount = 0;
-  }
-  if (usageCount >= DAILY_CAP) return false;
-  usageCount += 1;
-  return true;
+  const globalKey = `contracts-${today}`;
+  const ipKey = `contracts-${today}-ip-${clientIp(event)}`;
+
+  const [globalRaw, ipRaw] = await Promise.all([limitStore.get(globalKey), limitStore.get(ipKey)]);
+  const globalCount = globalRaw ? parseInt(globalRaw, 10) : 0;
+  const ipCount = ipRaw ? parseInt(ipRaw, 10) : 0;
+
+  if (globalCount >= DAILY_CAP) return { ok: false, reason: 'global' };
+  if (ipCount >= DAILY_CAP_PER_IP) return { ok: false, reason: 'ip' };
+
+  await Promise.all([
+    limitStore.set(globalKey, String(globalCount + 1)),
+    limitStore.set(ipKey, String(ipCount + 1))
+  ]);
+  return { ok: true };
 }
 
 const SYSTEM_PROMPTS = {
@@ -49,7 +60,8 @@ exports.handler = async (event) => {
     return { statusCode: 200, body: '' };
   }
 
-  const jobId = (body.jobId || '').toString().slice(0, 64);
+  const jobIdRaw = (body.jobId || '').toString().slice(0, 64);
+  const jobId = /^[a-zA-Z0-9-]{1,64}$/.test(jobIdRaw) ? jobIdRaw : null;
   if (!jobId) {
     return { statusCode: 200, body: '' };
   }
@@ -74,8 +86,13 @@ exports.handler = async (event) => {
     return { statusCode: 200, body: '' };
   }
 
-  if (!checkAndBumpUsage()) {
-    await store.set(jobId, JSON.stringify({ status: 'error', error: 'Contract Generator has hit its free generation limit for now. Check back shortly.' }));
+  const limitStore = getStore({ name: 'rate-limits', ...BLOBS_CONFIG });
+  const usage = await checkAndBumpUsage(limitStore, event);
+  if (!usage.ok) {
+    const message = usage.reason === 'ip'
+      ? "You've hit today's per-user generation limit. Check back shortly."
+      : 'Contract Generator has hit its free generation limit for now. Check back shortly.';
+    await store.set(jobId, JSON.stringify({ status: 'error', error: message }));
     return { statusCode: 200, body: '' };
   }
 
@@ -113,7 +130,8 @@ exports.handler = async (event) => {
 
     await store.set(jobId, JSON.stringify({ status: 'done', contractText }));
   } catch (err) {
-    await store.set(jobId, JSON.stringify({ status: 'error', error: err.message }));
+    console.error('generate-contract error:', err);
+    await store.set(jobId, JSON.stringify({ status: 'error', error: 'Something went wrong drafting that. Try again in a minute.' }));
   }
 
   return { statusCode: 200, body: '' };

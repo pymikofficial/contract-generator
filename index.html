@@ -18,7 +18,7 @@
 <meta name="twitter:image" content="https://cosmik.work/img/cosmikwork_broad_logo.webp">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;1,500&family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous"></script>
 <style>
   :root{
     --void:#0b0b14;
@@ -228,7 +228,7 @@
       <button class="secondary" onclick="exportPDF()">Export PDF</button>
     </div>
   </div>
-  <div class="paper" id="draftOutput"></div>
+  <div class="paper" id="draftOutput" aria-busy="false"></div>
 </div>
 </main>
 
@@ -570,6 +570,8 @@ async function generateContract() {
   generateBtn.textContent = 'Drafting…';
   formMsg.textContent = 'This can take up to a minute for a full draft.';
   formMsg.className = 'form-msg ok';
+  const draftOutputEl = document.getElementById('draftOutput');
+  draftOutputEl.setAttribute('aria-busy', 'true');
 
   const jobId = 'job-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
 
@@ -580,6 +582,7 @@ async function generateContract() {
       body: JSON.stringify({ jobId, contractType: currentType, fields })
     });
   } catch (err) {
+    draftOutputEl.setAttribute('aria-busy', 'false');
     formMsg.textContent = 'Could not reach the drafting service. Try again.';
     formMsg.className = 'form-msg';
     generateBtn.disabled = false;
@@ -598,7 +601,8 @@ async function generateContract() {
 
       if (data.status === 'done') {
         lastDraftText = data.contractText;
-        document.getElementById('draftOutput').textContent = lastDraftText;
+        draftOutputEl.textContent = lastDraftText;
+        draftOutputEl.setAttribute('aria-busy', 'false');
         document.getElementById('outputSection').style.display = 'block';
         document.getElementById('outputSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
         formMsg.textContent = 'Draft ready below.';
@@ -609,6 +613,7 @@ async function generateContract() {
       }
 
       if (data.status === 'error') {
+        draftOutputEl.setAttribute('aria-busy', 'false');
         formMsg.textContent = data.error || 'Something went wrong.';
         formMsg.className = 'form-msg';
         generateBtn.disabled = false;
@@ -617,6 +622,7 @@ async function generateContract() {
       }
 
       if (attempts >= maxAttempts) {
+        draftOutputEl.setAttribute('aria-busy', 'false');
         formMsg.textContent = 'This is taking longer than expected. Try again with fewer fields, or retry shortly.';
         formMsg.className = 'form-msg';
         generateBtn.disabled = false;
@@ -627,6 +633,7 @@ async function generateContract() {
       pollTimer = setTimeout(poll, 2000);
     } catch (err) {
       if (attempts >= maxAttempts) {
+        draftOutputEl.setAttribute('aria-busy', 'false');
         formMsg.textContent = 'Lost connection while drafting. Try again.';
         formMsg.className = 'form-msg';
         generateBtn.disabled = false;
