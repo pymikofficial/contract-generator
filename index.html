@@ -176,15 +176,15 @@
   <span class="section-title">Core details</span>
   <span class="section-hint">Used in every draft, regardless of type</span>
   <div class="field-row">
-    <span class="field-label">Employee full name</span>
+    <label class="field-label" for="coreEmployee">Employee full name</label>
     <input type="text" id="coreEmployee" placeholder="e.g. Ananya Roy">
   </div>
   <div class="field-row">
-    <span class="field-label">Employer / company name</span>
+    <label class="field-label" for="coreCompany">Employer / company name</label>
     <input type="text" id="coreCompany" placeholder="e.g. Northwind Retail Pvt Ltd">
   </div>
   <div class="field-row" style="margin-bottom:0;">
-    <span class="field-label">Jurisdiction / country</span>
+    <label class="field-label" for="coreJurisdiction">Jurisdiction / country</label>
     <input type="text" id="coreJurisdiction" placeholder="e.g. India" value="India">
   </div>
 </div>
@@ -194,7 +194,7 @@
 <div class="generate-bar">
   <button class="primary" id="generateBtn" onclick="generateContract()">Generate draft</button>
   <p class="form-note">Claude drafts the full letter or agreement from exactly what you've filled in above. Capped at a daily limit to keep this free to run.</p>
-  <p class="form-msg" id="formMsg"></p>
+  <p class="form-msg" id="formMsg" aria-live="polite"></p>
 </div>
 
 <div class="output-section" id="outputSection">
@@ -410,8 +410,11 @@ function makeFieldRow(label, placeholder, removable, onRemove, fieldId, sectionI
   const row = document.createElement('div');
   row.className = 'field-row';
 
-  const lab = document.createElement('span');
+  const inputId = 'field-' + sectionIdx + '-' + fieldId;
+
+  const lab = document.createElement('label');
   lab.className = 'field-label';
+  lab.htmlFor = inputId;
   lab.textContent = label;
   row.appendChild(lab);
 
@@ -420,6 +423,7 @@ function makeFieldRow(label, placeholder, removable, onRemove, fieldId, sectionI
 
   const state = sectionState[sectionIdx];
   const input = document.createElement('textarea');
+  input.id = inputId;
   input.rows = 1;
   input.style.minHeight = '44px';
   input.placeholder = placeholder;
