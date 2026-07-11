@@ -2,6 +2,9 @@
   "name": "contract-generator",
   "private": true,
   "version": "1.0.0",
+  "scripts": {
+    "test": "node scripts/smoke-test.mjs"
+  },
   "dependencies": {
     "@netlify/blobs": "^8.1.0"
   }
